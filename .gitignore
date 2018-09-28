@@ -1,0 +1,6 @@
+*.png
+*.eps
+*.tar
+*.gz
+*/results/*
+*.out
