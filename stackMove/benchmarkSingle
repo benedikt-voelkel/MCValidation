@@ -1,0 +1,61 @@
+#!/bin/bash
+
+
+[[ "$#" != "3" ]] && { echo "ERROR: Exactly 3 arguments required: engine (TGeant3 or TGeant4), particle (electron, proton, geantino) and nRuns (to be averaged over later)"; exit 1; }
+
+
+
+engine=$1
+particle=$2
+nRuns=$3
+
+# base dir
+ROOT_DIR="$(pwd)"
+# write output here
+OUTPUT_DIR=$ROOT_DIR/benchmarks_bak/$engine/$particle
+
+# Set number of events based on particle since electrons produce much more secondaries
+NEVENTS_ELECTORN="10 100 250 500 750 1000"
+#NEVENTS_PROTON_GEANTINO="100 1000 5000 10000 25000 50000 100000 250000 500000 750000 1000000"
+NEVENTS_PROTON_GEANTINO="100 200 400 600 800 2000 3000 4000"
+[[ "$particle" == "electron" ]] && nEvents="$NEVENTS_ELECTRON" || nEvents="$NEVENTS_PROTON_GEANTINO"
+
+# First check whether ALICE env has to set up
+if [[ "$ALICE_SETUP" == "" ]]
+then
+	source $ALICE_PARENT_DIR/setup/setupAlice.sh > /dev/null 2>&1
+fi
+
+# Create output directory and clean before running
+mkdir -p $OUTPUT_DIR
+rm $OUTPUT_DIR/* > /dev/null 2>&1
+
+# Change to concurrent development base dir and setup environment
+cd $ALICE_DEV_CONCURRENT
+eval `alienv load concurrent-engines/latest-concurrent-engines`
+
+# executable is here
+EXAMPLE_BIN_DIR=$ALICE_DEV_CONCURRENT/sw_test/bin
+# Change to where the executable is
+cd $EXAMPLE_BIN_DIR
+
+for n in $nEvents; do
+	for (( i=1; i<=$nRuns; i++ )); do
+		log_file_i=$OUTPUT_DIR/log_${n}_${i}
+		log_file_global=$OUTPUT_DIR/log_${n}
+		echo "Start single run $i for engine $engine with $n events:"
+		./vmc_exampleCE $n $engine > $log_file_i 2>&1
+		if [[ "$?" != "0" ]] ; then
+			echo "ERROR" >> $log_file_global
+		else
+			cat $log_file_i | grep "CP time" | cut -d ' ' -f 6 >> $log_file_global
+			rm $log_file_i
+	
+		fi
+		echo "Finished single run $i for engine $e with $n events."
+		echo "---"
+	done
+done
+	
+
+echo "Run finished"
