@@ -4,7 +4,6 @@
 [[ "$#" != "3" ]] && { echo "ERROR: Exactly 3 arguments required: engine (TGeant3 or TGeant4), particle (electron, proton, geantino) and nRuns (to be averaged over later)"; exit 1; }
 
 
-
 engine=$1
 particle=$2
 nRuns=$3
@@ -12,7 +11,7 @@ nRuns=$3
 # base dir
 ROOT_DIR="$(pwd)"
 # write output here
-OUTPUT_DIR=$ROOT_DIR/benchmarks/$engine/single/$particle/cpu_times
+OUTPUT_DIR=$ROOT_DIR/benchmarks/$engine/concurrent/$particle/cpu_times
 
 # Set number of events based on particle since electrons produce much more secondaries
 NEVENTS_ELECTORN="10 100 250 500 750 1000"
@@ -29,9 +28,10 @@ then
 	source $ALICE_PARENT_DIR/setup/setupAlice.sh > /dev/null 2>&1
 fi
 
-# Create output directory and clean before running
+# Create output directory if necessary and clean before write new stuff
 mkdir -p $OUTPUT_DIR
 #rm $OUTPUT_DIR/* > /dev/null 2>&1
+
 
 # Change to concurrent development base dir and setup environment
 cd $ALICE_DEV_CONCURRENT
@@ -46,8 +46,8 @@ for n in $nEvents; do
 	for (( i=1; i<=$nRuns; i++ )); do
 		log_file_i=$OUTPUT_DIR/log_${n}_${i}
 		log_file_global=$OUTPUT_DIR/log_${n}
-		echo "Start single run $i for engine $engine with $n events:"
-		./vmc_exampleCE $n $engine > $log_file_i 2>&1
+		echo "Start concurrent run $i for engine $engine with $n events:"
+		./vmc_exampleCE $n $engine $engine > $log_file_i 2>&1
 		if [[ "$?" != "0" ]] ; then
 			echo "ERROR" >> $log_file_global
 		else
@@ -55,7 +55,7 @@ for n in $nEvents; do
 			rm $log_file_i
 	
 		fi
-		echo "Finished single run $i for engine $e with $n events."
+		echo "Finished concurrent run $i for engine $e with $n events."
 		echo "---"
 	done
 done

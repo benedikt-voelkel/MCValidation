@@ -31,28 +31,75 @@ INFILE_DIR = "indir"
 '''
 Arguments:
     plotDicts: list of dictionaries holding plot info
-    outputPath: full output file path up to extension
+    outputPath (string): full output file path up to extension
+    xmin,xmax,ymin,ymax (float): lower and upper values for x and y axis,
+                                 respectively
+    ratioIndex (int): add ratio plot taking the rationPlot'th entry in plotDicts
+                      as the reference. If <1 no ratio plot is added
 Description:
     Extracts a plot from each entry of the list and produces an overlay plot.
 '''
-def plot(plotDicts, outputPath, xmax, xmin, ymax, ymin):
+def plot(plotDicts, outputPath, ratioIndex, xmax, xmin, ymax, ymin):
+
+    # Extract the data as numpy
+    #xDataArray = np.array()
+    #yDataArray = np.array()
+    #for pd in plotDicts:
+        #xDataArray.append([pd[XDATA_NAME], axis=0])
+        #yDataArray.append([pd[YDATA_NAME], axis=0])
+
+    # prepare plots, maybe need a ratio plot
+    referenceDict = None
+    plotRows = 13
+    plotColumns = 1
+    # In case of having a ratio plot this is the number of rows the main plot
+    # will get.
+    rowspanMain = 10
+    # Just a tuple with main and ratio axes
+    axes = []
+
+    if ratioIndex < 1:
+        axMain = plt.subplot2grid((plotRows, plotColumns), (0, 0), rowspan=plotRows, colspan=plotColumns)
+        axes.append(axMain)
+        axMain.set_xlabel(plotDicts[0][XAXIS_LABEL])
+    elif len(plotDicts) == 1:
+        print "WARNING: Only one plot, ratio doesn't make sense here. Skip..."
+    elif ratioIndex > len(plotDicts):
+        print "WARNING: Have only " + str(len(plotDicts)) + " plots but " + str(ratioIndex) + " was requested as reference. Skip..."
+    else:
+        axMain = plt.subplot2grid((plotRows, plotColumns), (0, 0), rowspan=rowspanMain, colspan=plotColumns)
+        axRatio = plt.subplot2grid((plotRows, plotColumns), (rowspanMain, 0), rowspan=(plotRows - rowspanMain), colspan=plotColumns, sharex=axMain)
+        axes.append(axMain)
+        axes.append(axRatio)
+        # Make clear what the single points are normalised to
+        axRatio.set_ylabel("1/" + plotDicts[ratioIndex-1][PLOT_LABEL])
+        axRatio.set_xlabel(plotDicts[0][XAXIS_LABEL])
+        referenceDict = plotDicts[ratioIndex-1]
+    # Set to main axes
+    # Set x and y labels for main plot taken from first entry in plotDicts
+    # \todo Needs to be more general and given as an argument to this function.
+
+    axes[0].set_ylabel(plotDicts[0][YAXIS_LABEL])
 
     colors = iter(cm.rainbow(np.linspace(0, 1, len(plotDicts))))
+    markers = iter([".", "+", "^"])
     if xmax:
-        plt.xlim(right=xmax)
+        axes[0].set_xlim(right=xmax)
     if xmin:
-        plt.xlim(left=xmin)
+        axes[0].set_xlim(left=xmin)
     if ymax:
-        plt.ylim(top=ymax)
+        axes[0].set_ylim(top=ymax)
     if ymin:
-        plt.ylim(bottom=ymin)
+        axes[0].set_ylim(bottom=ymin)
     for pd in plotDicts:
-        plt.plot(pd[XDATA_NAME], pd[YDATA_NAME], color=next(colors), marker=".", linestyle="", label=pd[PLOT_LABEL])
-        plt.xlabel(pd[XAXIS_LABEL])
-        plt.ylabel(pd[YAXIS_LABEL])
+        color = next(colors)
+        marker = next(markers)
+        axes[0].plot(pd[XDATA_NAME], pd[YDATA_NAME], color=color, marker=marker, linestyle="", label=pd[PLOT_LABEL])
+        if referenceDict and pd != referenceDict:
+            ratio = np.array(pd[YDATA_NAME]) / np.array(referenceDict[YDATA_NAME])
+            axes[1].plot(pd[XDATA_NAME], ratio, color=color, marker=marker, linestyle="")
 
-
-    plt.legend(loc="best", fontsize=10)
+    axes[0].legend(loc="best", fontsize=10)
     plt.savefig(outputPath + ".eps")
     plt.savefig(outputPath + ".png")
 
@@ -214,14 +261,14 @@ Arguments:
     indir: Can be used as a prefix to where potential files are found (deprecated)
     outputPath: full path to file the plot should be written to
 '''
-def main(configFiles, indir, outputPath, xmax, xmin, ymax, ymin):
+def main(configFiles, indir, outputPath, ratioIndex, xmax, xmin, ymax, ymin):
 
     plotDicts = []
 
     # Fill dictionary with plotting info
     for cf in configFiles:
         plotDicts.append(extractFiles(cf, indir))
-    plot(plotDicts, outputPath, xmax, xmin, ymax, ymin)
+    plot(plotDicts, outputPath, ratioIndex, xmax, xmin, ymax, ymin)
 
     return 0
 
@@ -233,6 +280,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-d", "--indir", default="./", help="directory where to find input files specified in config file")
 parser.add_argument("-c", "--config", nargs="+", required=True, help="config file")
 parser.add_argument("-o", "--outprefix", required=True, help="output file name incl. path")
+parser.add_argument("-r", "--ratio", default=-1, type=int, help="index of plot used as reference for ratio")
 parser.add_argument("--xmax", type=float, help="upper limit on x axis")
 parser.add_argument("--xmin", type=float, help="lower limit on x axis")
 parser.add_argument("--ymax", type=float, help="upper limit on y axis")
@@ -241,4 +289,4 @@ parser.add_argument("--ymin", type=float, help="lower limit on y axis")
 args = parser.parse_args();
 
 # Forward config to main
-sys.exit(main(args.config, args.indir, args.outprefix, args.xmax, args.xmin, args.ymax, args.ymin))
+sys.exit(main(args.config, args.indir, args.outprefix, args.ratio, args.xmax, args.xmin, args.ymax, args.ymin))
