@@ -10,6 +10,8 @@ import json
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
+# To fit a curve
+from scipy.optimize import curve_fit
 
 '''
 Some global variables:
@@ -30,8 +32,17 @@ PLOT_LABEL = "label"
 INFILE_DIR = "indir"
 # Available plot types are 'hist' and 'scatter'
 PLOT_TYPE = "plotType"
+# Provide a fit type, so far only 'linear' is available
+FIT_TYPE = "fitType"
 
 
+'''
+Arguments:
+    m, b, x: scalars or numpy arrays of same dimension. Can be used to fit a
+             linear function.
+'''
+def linear_fit(x, m, b):
+    return m * x + b
 
 '''
 Arguments:
@@ -62,6 +73,7 @@ def plot(plotDicts, outputPath, ratioIndex, xmax, xmin, ymax, ymin):
     rowspanMain = 10
     # Just a tuple with main and ratio axes
     axes = []
+    plots = []
 
     if ratioIndex < 1:
         axMain = plt.subplot2grid((plotRows, plotColumns), (0, 0), rowspan=plotRows, colspan=plotColumns)
@@ -73,6 +85,7 @@ def plot(plotDicts, outputPath, ratioIndex, xmax, xmin, ymax, ymin):
         print "WARNING: Have only " + str(len(plotDicts)) + " plots but " + str(ratioIndex) + " was requested as reference. Skip..."
     else:
         axMain = plt.subplot2grid((plotRows, plotColumns), (0, 0), rowspan=rowspanMain, colspan=plotColumns)
+        axMain.get_xaxis().set_visible(False)
         axRatio = plt.subplot2grid((plotRows, plotColumns), (rowspanMain, 0), rowspan=(plotRows - rowspanMain), colspan=plotColumns, sharex=axMain)
         axes.append(axMain)
         axes.append(axRatio)
@@ -96,20 +109,51 @@ def plot(plotDicts, outputPath, ratioIndex, xmax, xmin, ymax, ymin):
         axes[0].set_ylim(top=ymax)
     if ymin:
         axes[0].set_ylim(bottom=ymin)
+
     for pd in plotDicts:
+        # Set all indices to true
+        indices = [True for i in pd[XDATA_NAME]]
+        if xmax is not None:
+            indices = np.logical_and((pd[XDATA_NAME] < xmax), indices)
+        if xmin is not None:
+            indices = np.logical_and((pd[XDATA_NAME] > xmin), indices)
+        if ymax is not None:
+            indices = np.logical_and((pd[YDATA_NAME] < ymax), indices)
+        if ymin is not None:
+            indices = np.logical_and((pd[YDATA_NAME] > ymin), indices)
+
+        pd[XDATA_NAME] = pd[XDATA_NAME][indices]
+        pd[YDATA_NAME] = pd[YDATA_NAME][indices]
+        if pd[XDATA_ERROR_NAME] is not None:
+            pd[XDATA_ERROR_NAME] = pd[XDATA_ERROR_NAME][indices]
+        if pd[YDATA_ERROR_NAME] is not None:
+            pd[YDATA_ERROR_NAME] = pd[YDATA_ERROR_NAME][indices]
+        #
+
         color = next(colors)
         marker = next(markers)
-        axes[0].errorbar(pd[XDATA_NAME], pd[YDATA_NAME], xerr=pd[XDATA_ERROR_NAME], yerr=pd[YDATA_ERROR_NAME], color=color, marker=marker, linestyle="", label=pd[PLOT_LABEL])
+        # Check if y-data is actually a function \note, assumed to have one
+        # argument which is given by x-data numpy array
+        if callable(pd[YDATA_NAME]):
+            plots.append(axes[0].plot(pd[XDATA_NAME], pd[YDATA_NAME](pd[XDATA_NAME]), xerr=pd[XDATA_ERROR_NAME], yerr=pd[YDATA_ERROR_NAME], color=color, linestyle="-", label=pd[PLOT_LABEL]))
+        # Otherwise scatter plot.
+        else:
+            plots.append([axes[0].errorbar(pd[XDATA_NAME], pd[YDATA_NAME], xerr=pd[XDATA_ERROR_NAME], yerr=pd[YDATA_ERROR_NAME], color=color, marker=marker, linestyle="", label=pd[PLOT_LABEL])])
+            opt, cov = curve_fit(linear_fit, pd[XDATA_NAME], pd[YDATA_NAME])
+            print "Fit for " + pd[PLOT_LABEL] + ": m = " + str(opt[0]) + "+/-" + str(cov[0]) + ", b = " + str(opt[1]) + "+/-" + str(cov[1])
+            plots.append(axes[0].plot(pd[XDATA_NAME], linear_fit(pd[XDATA_NAME], opt[0], opt[1]), color=color, linestyle="-", label="linear fit"))
         if referenceDict and pd != referenceDict:
-            ratio = np.array(pd[YDATA_NAME]) / np.array(referenceDict[YDATA_NAME])
+            ratio = pd[YDATA_NAME] / referenceDict[YDATA_NAME]
+            opt, cov = curve_fit(linear_fit, pd[XDATA_NAME], ratio)
+            print "Fit for ratio of " + pd[PLOT_LABEL] + ": m = " + str(opt[0]) + "+/-" + str(cov[0]) + ", b = " + str(opt[1]) + "+/-" + str(cov[1])
             ratioNomError = None
             ratioError = None
 
-            if pd[YDATA_ERROR_NAME]:
-                ratioNomError = np.square(np.array(pd[YDATA_ERROR_NAME]) / np.array(referenceDict[YDATA_NAME]))
+            if pd[YDATA_ERROR_NAME] is not None:
+                ratioNomError = np.square(pd[YDATA_ERROR_NAME] / referenceDict[YDATA_NAME])
 
-            if referenceDict[YDATA_ERROR_NAME]:
-                ratioError = np.square(np.array(pd[YDATA_NAME]) * np.array(referenceDict[YDATA_ERROR_NAME])  / np.square(np.array(referenceDict[YDATA_NAME])))
+            if referenceDict[YDATA_ERROR_NAME] is not None:
+                ratioError = np.square(pd[YDATA_NAME] * referenceDict[YDATA_ERROR_NAME]  / np.square(referenceDict[YDATA_NAME]))
 
 
             # Sum the squares if possible
@@ -124,8 +168,11 @@ def plot(plotDicts, outputPath, ratioIndex, xmax, xmin, ymax, ymin):
 
             # Plot the stuff
             axes[1].errorbar(pd[XDATA_NAME], ratio, yerr=ratioError, color=color, marker=marker, linestyle="")
-
-    axes[0].legend(loc="best", fontsize=10)
+            #plots.append(axes[1].plot(pd[XDATA_NAME], linear_fit(pd[XDATA_NAME], opt[0], opt[1]), color=color, linestyle="--", label="m={:.4f}".format(round(opt[0],4))+", b={:.4f}".format(round(opt[1],4))))
+    labels = [l[0].get_label() for l in plots]
+    plots = [p[0] for p in plots]
+    #print plots[2]
+    axes[0].legend(plots, labels, loc="best", fontsize=10)
     plt.savefig(outputPath + ".eps")
     plt.savefig(outputPath + ".png")
 
@@ -175,32 +222,41 @@ def extractFiles(configFile, indir):
     configDict[YAXIS_LABEL] = configDict.get(YAXIS_LABEL, "yAxis")
     # Extract a label if any.
     configDict[PLOT_LABEL] = configDict.get(PLOT_LABEL, "label")
+    # Extract fit
+    #configDict[FIT_TYPE] = configDict.get(FIT_TYPE, None)
 
     # Check for required x data
-    if not configDict.get(XDATA_NAME, None):
+    if configDict.get(XDATA_NAME, None) is None:
         print "ERROR: No x-data found"
         exit(1)
+    configDict[XDATA_NAME] = np.array(configDict[XDATA_NAME])
     configDict[XDATA_ERROR_NAME] = configDict.get(XDATA_ERROR_NAME, None)
-    # If number of error values is different from number of nominal values, fail
-    if configDict[XDATA_ERROR_NAME] and len(configDict[XDATA_NAME]) != len(configDict[XDATA_ERROR_NAME]):
-        print "ERROR: Same number of nominal values and errors required for x-data"
-        exit(1)
+    if configDict[XDATA_ERROR_NAME] is not None:
+        configDict[XDATA_ERROR_NAME] = np.array(configDict[XDATA_ERROR_NAME])
+        # If number of error values is different from number of nominal values, fail
+        if len(configDict[XDATA_NAME]) != len(configDict[XDATA_ERROR_NAME]):
+            print "ERROR: Same number of nominal values and errors required for x-data"
+            exit(1)
 
     # Check if y data are already there and just return if so.
     configDict[YDATA_ERROR_NAME] = configDict.get(YDATA_ERROR_NAME, None)
-    if configDict.get(YDATA_NAME, None):
+    if configDict.get(YDATA_NAME, None) is not None:
         # Check for same length of x and y
+        configDict[YDATA_NAME] = np.array(configDict[YDATA_NAME])
         if len(configDict[YDATA_NAME]) != len(configDict[XDATA_NAME]):
             print "ERROR: Same number of x- and y-data (including errors) required"
             exit(1)
-        if configDict[YDATA_ERROR_NAME] and len(configDict[YDATA_ERROR_NAME]) != len(configDict[YDATA_NAME]):
-            print "ERROR: Same number for y-data and respective errors required"
-            exit(1)
+        configDict[YDATA_ERROR_NAME] = configDict.get(YDATA_ERROR_NAME, None)
+        if configDict[YDATA_ERROR_NAME] is not None:
+            configDict[YDATA_ERROR_NAME] = np.array(configDict[YDATA_ERROR_NAME])
+            if len(configDict[YDATA_ERROR_NAME]) != len(configDict[YDATA_NAME]):
+                print "ERROR: Same number for y-data and respective errors required"
+                exit(1)
         return configDict
 
 
     # Expect input files to read data from.
-    if not configDict.get(FILES, None):
+    if configDict.get(FILES, None) is None:
         print "ERROR: Input files or y-data required"
         exit(1)
 
@@ -220,6 +276,8 @@ def extractFiles(configFile, indir):
         value, error = extract(file, configDict[EXTRACTION_ALGORITHM])
         configDict[YDATA_NAME].append(value)
         configDict[YDATA_ERROR_NAME].append(error)
+    configDict[YDATA_NAME] = np.array(configDict[YDATA_NAME])
+    configDict[YDATA_ERROR_NAME] = np.array(configDict[YDATA_ERROR_NAME])
 
     return configDict
 
