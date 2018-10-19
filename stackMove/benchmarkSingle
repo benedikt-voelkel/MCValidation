@@ -16,8 +16,8 @@ OUTPUT_DIR=$ROOT_DIR/benchmarks/$engine/single/$particle/cpu_times
 
 # Set number of events based on particle since electrons produce much more secondaries
 NEVENTS_ELECTORN="10 100 250 500 750 1000"
-NEVENTS_GEANTINO="100 200 400 600 800 1000 2000 3000 4000 5000 10000 25000 50000 100000 250000 500000 750000 1000000"
-NEVENTS_PROTON="100 200 400 600 800 1000 2000 3000 4000 5000 10000 20000 40000 60000 80000 100000"
+NEVENTS_GEANTINO="100 200 400 600 800 1000 2000 3000 4000 5000 7500 10000 15000 25000 50000 75000 100000 250000 500000"
+NEVENTS_PROTON="100 200 400 600 800 1000 2000 3000 4000 5000 10000 15000 20000 30000 35000 40000"
 [[ "$particle" != "electron" && "$particle" != "proton" && "$particle" != "geantino" ]] && { echo "ERROR: particle has to be either 'electron', 'proton' or 'geantino'"; ext 1; } 
 [[ "$particle" == "electron" ]] && nEvents="$NEVENTS_ELECTRON"
 [[ "$particle" == "proton" ]] && nEvents="$NEVENTS_PROTON"
@@ -31,7 +31,7 @@ fi
 
 # Create output directory and clean before running
 mkdir -p $OUTPUT_DIR
-#rm $OUTPUT_DIR/* > /dev/null 2>&1
+rm $OUTPUT_DIR/* > /dev/null 2>&1
 
 # Change to concurrent development base dir and setup environment
 cd $ALICE_DEV_CONCURRENT
